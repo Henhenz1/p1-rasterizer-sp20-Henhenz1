@@ -1,4 +1,4 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 <style>
@@ -23,74 +23,246 @@
 
 <body>
 
-<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2018</h1>
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2020</h1>
 <h1 align="middle">Project 1: Rasterizer</h1>
-<h2 align="middle">YOUR NAME, CS184-??</h2>
+<h2 align="middle">HENRY ZHANG, CS184-ACV</h2>
 
 <br><br>
 
 <div>
 
 <h2 align="middle">Overview</h2>
-<p>Give a high-level overview of what you implemented in this project. Think about what you've built as a whole. Share your thoughts on what interesting things you've learned from completing the project.</p>
+<p>
+    In this project, we implemented a rasterizer capable of taking SVG files as input and rendering 
+    single color, color-interpolated, and textured triangles, as well as handling vector transforms. 
+    The rasterizer also can antialias the rendered images using supersampling, pixel sampling, and 
+    mipmap level sampling. In writing this rasterizer, we've learned several interesting and useful 
+    topics, including barycentric coordinates and how they can be used for triangular interpolation, 
+    how the rasterization pipeline is altered when supersampling is implemented, and how points on 
+    a texture are mapped to points in screen space and how that process can be used to reduce aliasing.
+</p>
+
 
 <h2 align="middle">Section I: Rasterization</h2>
 
 <h3 align="middle">Part 1: Rasterizing single-color triangles</h3>
 
-<p>Here is an example 2x2 gridlike structure using an HTML table. Each <b>tr</b> is a row and each <b>td</b> is a column in that row. You might find this useful for framing and showing your result images in an organized fashion.</p>
+<p>
+    Before we rasterize anything, we first check if the vertices 0-1-2 form a counter-clockwise 
+    angle (from https://algs4.cs.princeton.edu/91primitives/). If they do not, we swap vertices 
+    0 and 1 to make sure they do. This standardization ensures that the three line tests we 
+    perform later work properly to determine if a point is located inside the triangle.
+</p>
+<p>
+    After the vertices are swapped (or not, if they were already counter-clockwise), we define 
+    a bounding box using the extremes of the x and y coordinates, finding the min and max of 
+    each, rounded to appropriate integer values. This way, we can iterate only over the pixels 
+    in this box when rasterizing the triangle, which is much more efficient than iterating over 
+    all pixels on screen.
+</p>
+<p>
+    We then iterate over all pixels in the bounding box and use line tests as described in 
+    lecture to check if they are in the triangle defined by the vertices. Since our for loops 
+    iterate between whole-number coordinates, the points we iterate over are actually the 
+    bottom-left corners of each pixel, so we add 0.5 to both the x and y values to find the 
+    center of the pixel, and test that point if it is still within the bounding box. If it is, 
+    then we call fill_pixel() to render the pixel to the screen.
+</p>
 
-<div align="middle">
-  <table style="width=100%">
-    <tr>
-      <td>
-        <img src="images/image1.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-      <td>
-        <img src="images/image2.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-    </tr>
-    <br>
-    <tr>
-      <td>
-        <img src="images/image3.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-      <td>
-        <img src="images/image4.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-    </tr>
-  </table>
-</div>
+<img src="images/pt1.png" align="middle" width="800"/>
+<figcaption align="middle">Render of basic/test4.svg. At this resolution and without supersampling, especially sharp triangles appear discontinuous.</figcaption>
 
 
 <h3 align="middle">Part 2: Antialiasing triangles</h3>
 
+<p>
+    For each pixel, the supersampling algorithm checks some number of evenly-distributed points to see
+    if they are within the triangle. The precise coordinates of the subpixels are calculated by taking
+    the square root of the sampling rate (assumed here to be either 1, 4, 9, or 16) and using the 
+    reciprocal of the result to find the distance between adjacent subpixels. Subpixels are arranged
+    in a square and are counted from left to right, top to bottom. Modular arithmetic is used to sample
+    in the appropriate coordinates for the nth subpixel.
+</p>
+<p>
+    Because supersampling averages several samples per pixel, some modifications to the rasterization
+    pipeline are necessary when the sample rate is greater than 1. Instead of calling fill_pixel()
+    directly, the rasterizer calls fill_supersample(), which writes the sampled color to the
+    supersample buffer, which has size length * width * sample_rate. Then, in order to draw the 
+    appropriate color to the screen, we use resolve_to_framebuffer() to take the average color over all 
+    samples in a given pixel, and then call fill_pixel() from there. Because RGB values are square roots
+    of the color values they represent, we take the average of the squared RGB values and square root the 
+    result to find the average color of the samples. The resulting image blurs the edges of the triangles 
+    slightly and reduces aliasing by allowing representation of if a pixel is mostly inside or outide 
+    the triangle, rather than reducing it to an all-or-nothing representation. Supersampling is useful 
+    for precisely this reason.
+</p>
 
+<div align="middle">
+  <table style="width=100%">
+      <tr>
+          <td>
+              <img src="images/pt2-1.png" align="middle" width="400px" />
+              <figcaption align="middle">Supersample rate 1 per pixel.</figcaption>
+          </td>
+          <td>
+              <img src="images/pt2-2.png" align="middle" width="400px" />
+              <figcaption align="middle">Supersample rate 4 per pixel.</figcaption>
+          </td>
+          <td>
+              <img src="images/pt2-3.png" align="middle" width="400px" />
+              <figcaption align="middle">Supersample rate 16 per pixel.</figcaption>
+          </td>
+      </tr>
+  </table>
+</div>
+
+<p>
+    Above are renders of basic/test4.svg at different supersampling rates. At higher rates, the sharp 
+    magenta triangle appears smoother, while it is discontinuous without supersampling. This is because 
+    supersampling allows the renderer to better capture when the triangle passes through the pixel, since
+    more samples are taken. Without supersampling, even though the triangle passes through the pixel, it 
+    does not pass through its exact center, so the pixel is uncolored.
+</p>
 
 <h3 align="middle">Part 3: Transforms</h3>
 
+<img src="images/pt3.png" align="middle" width="800"/>
+<figcaption align="middle">"Goodness! Han Solo! It is I, C-3PO. You probably don't recognize me... because of the red arm."</figcaption>
 
+<p>
+    Here we have C-3PO waving at Han Solo (out of frame) to celebrate Han's return in The Force Awakens. 
+    This simplified render of C-3PO grants him greater range of motion than he may have had originally.
+</p>
 
 <h2 align="middle">Section II: Sampling</h2>
 
 <h3 align="middle">Part 4: Barycentric coordinates</h3>
 
+<p>
+    Barycentric coordinates are a way to express the position of a point relative to the vertices of a 
+    triangle that contains it. A point in barycentric coordinates is expressed using three numbers a, b, 
+    and c, that sum to 1 and correspond to the three vertices of a triangle, A, B, and C (which are 
+    Cartesian coordinates). The Cartesian coordinates of a point P in a triangle ABC are expressed as the 
+    linear combination P = aA + bB + cC. The coefficients a, b, and c can be thought of as how close the 
+    point is to that vertex; 1 means the point is the vertex, while 0 means the point is on the side of 
+    the triangle opposite the vertex. They also represent the proportional area of the triangle formed by
+    P and the other two vertices not corresponding to a particular coefficient.
+</p>
+<p>
+    Barycentric coordinates allow us to smoothly interpolate between three points (as opposed to just two
+    with linear interpolation), which is especially useful for rendering color gradients in triangles. 
+    Just as the coefficients a, b, and c express a continuum of points in 2D space, they can also be used 
+    to express a continuum of other properties of the three vertices.
+</p>
+<img src="images/pt4.png" align="middle" width="800"/>
+<figcaption align="middle">Render of RGB color triangle. Barycentric coordinates allow us to interpolate 
+    red, green, and blue over the triangle to render a color gradient.</figcaption>
+<img src="images/pt4-2.png" align="middle" width="800"/>
+<figcaption align="middle">Render of basic/test7.svg.</figcaption>
+
 
 <h3 align="middle">Part 5: "Pixel sampling" for texture mapping</h3>
+<p>
+    Pixel sampling is a way to render 2D textures into 3D space. Applying textures is relatively trivial 
+    when the target space matches that of the original texture; a 1-to-1 mapping from texture to target 
+    exists and can be performed to complete the operation. Pixel sampling is typically used when the 
+    texture must be upscaled, or rendered larger than it actually is. As we render points to the screen, 
+    we find the point in the texture space that corresponds to the screen space and sample around that 
+    point to determine what color to draw to the screen.
+</p>
+<p>
+    This rasterizer incorporates two methods of pixel sampling. Nearest-neighbors pixel sampling finds the 
+    point P in texture space corresponding to the screen point to be rendered and just renders the color of 
+    the nearest texel (texture pixel to the screen. This is computationally simple, but the result appears 
+    blocky. Alternatively, bilinear sampling performs three linear color interpolations between the four 
+    closest texels to P and renders that, which results in a smoother, blurry-looking image.
+</p>
 
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/pt5-1.png" align="middle" width="400px"/>
+        <figcaption align="middle">Nearest sampling, 1 sample per pixel.</figcaption>
+      </td>
+      <td>
+        <img src="images/pt5-2.png" align="middle" width="400px"/>
+        <figcaption align="middle">Nearest sampling, 16 samples per pixel.</figcaption>
+      </td>
+    </tr>
+    <br>
+    <tr>
+      <td>
+        <img src="images/pt5-3.png" align="middle" width="400px"/>
+        <figcaption align="middle">Bilinear sampling, 1 sample per pixel.</figcaption>
+      </td>
+      <td>
+        <img src="images/pt5-4.png" align="middle" width="400px"/>
+        <figcaption align="middle">Bilinear sampling, 16 samples per pixel.</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>
+    The above screenshots illustrate the difference between nearest sampling and bilinear sampling. While 
+    nearest sampling results in blocks of color, bilinear sampling creates a smoother image. This effect 
+    is only visible when the texture is upscaled and the sampling frequency is greater than the texture 
+    frequency. 
+</p>
 
 <h3 align="middle">Part 6: "Level sampling" with mipmaps for texture mapping</h3>
 
+<p>
+    Level sampling is a way to render textures at differing resolutions using mipmaps, which are prerendered 
+    versions of textures at progressively lower resolutions. If a high-resolution texture is rendered to a 
+    small screen space, aliasing will generally occur. Mipmaps address this issue by shrinking the texture to 
+    be rendered, so that the mapping approaches 1-to-1. The level of mipmap to be used depends on the size of 
+    the render space. When rendering the screen point (x,y), we find the corresponding texture point (u,v) and 
+    compare it to the texture points of (x+1, y) and (x, y+1). The greater the distance between these points  
+    in texture space, the higher the mipmap level (lower resolution) to be used, since they are always one pixel 
+    apart in screen space.
+</p>
+<p>
+    This rasterizer can switch between three methods of level sampling. Zero sampling always samples from the 0th 
+    mipmpap, which is the original resolution of the image. Nearest level sampling calculates the appropriate mipmap 
+    level (which may not be an integer) using formulas discussed in class, then rounds to the nearest integer and samples 
+    from that mipmap. Linear level sampling takes the unrounded number and uses it to return a weighted combination of 
+    samples from the mipmap levels above and below that number.
+</p>
+<p>
+    In general, methods which offer greater antialiasing power tend to require more memory and take more time. Bilinear 
+    pixel sampling has this relationship to nearest pixel sampling regardless of zoom level. Level sampling requires more 
+    memory and time at high zoom levels but takes less when zoomed out, since a lower-resolution mipmap is applied instead 
+    of the full texture. However, this effect is not significantly noticeable compared to the effect at high zoom.
+</p>
 
 
-<h2 align="middle">Section III: Art Competition</h2>
-<p>If you are not participating in the optional art competition, don't worry about this section!</p>
-
-<h3 align="middle">Part 7: Draw something interesting!</h3>
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/pt6-1.png" align="middle" width="400px"/>
+        <figcaption align="middle">Zero level, nearest pixel.</figcaption>
+      </td>
+      <td>
+        <img src="images/pt6-2.png" align="middle" width="400px"/>
+        <figcaption align="middle">Zero level, bilinear pixel.</figcaption>
+      </td>
+    </tr>
+    <br>
+    <tr>
+      <td>
+        <img src="images/pt6-3.png" align="middle" width="400px"/>
+        <figcaption align="middle">Nearest level, nearest pixel.</figcaption>
+      </td>
+      <td>
+        <img src="images/pt6-4.png" align="middle" width="400px"/>
+        <figcaption align="middle">Nearest level, bilinear pixel.</figcaption>
+      </td>
+    </tr>
+  </table>
+</div>
 
 </body>
 </html>
